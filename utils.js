@@ -84,7 +84,8 @@ utils.handler = (cache, resp, body) => {
 
 utils.handle_v2 = (cache_v2, resp, body) => {
     if (body.cmd == 'sub') {
-        cmds.gen_sub_v2(buf);
+        let ret = cmds.gen_sub_v2(cache_v2, body.data);
+        utils.make_resp(resp, ret.code, ret.msg, ret.data);
     } else {
         utils.handle_common(cache_v2, resp, body);
     }
@@ -92,7 +93,8 @@ utils.handle_v2 = (cache_v2, resp, body) => {
 
 utils.handle_ss = (cache_ss, resp, body) => {
     if (body.cmd == 'sub') {
-        cmds.gen_sub_v2(buf);
+        let ret = cmds.gen_sub_v2(cache_v2, body.data);
+        utils.make_resp(resp, ret.code, ret.msg, ret.data);
     } else {
         utils.handle_common(cache_ss, resp, body);
     }
