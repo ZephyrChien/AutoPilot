@@ -1,6 +1,7 @@
 'use strict';
 
 var utils = {};
+const fs = require('fs');
 const config = require('./config');
 const cmds = require('./cmds');
 
@@ -14,6 +15,14 @@ utils.auth = (headers) => {
 utils.ret404 = (resp) => {
     resp.statusCode = 404;
     resp.end();
+};
+
+utils.flush = (cache, fname) => {
+    fs.writeFile(fname, JSON.stringify(cache), (err) => {
+        if (err) {
+            console.error('flush: error');
+        }
+    });
 };
 
 utils.make_json = (buf) => {
@@ -106,6 +115,7 @@ utils.handle_common = (cache, resp, body) => {
             break;
     }
     utils.make_resp(resp, ret.code, ret.msg, ret.data);
+    utils.flush(cache,config.swap_file[body.t]);
 };
 
 module.exports = utils;

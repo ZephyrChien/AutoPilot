@@ -7,28 +7,47 @@ const clone = (buf) => {
 }
 
 const search = (buf, key) => {
-    let v = {};
+    let v = [];
     const s = (b,k,v) => {
-        if (k in b) {
-            v[k] = b[k];
-            return;
-        }
-        if (b instanceof Object) {
-            for (const kk in b) {
-                s(kk,k,v);
-            }
-        }
         if (b instanceof Array) {
             for (let i=0,len=b.length; i<len; i++){
                 s(b[i],k,v);
             }
+        } else if (b instanceof Object) {
+            if (k in b) {
+                v.push(b[k]);
+            }
+            for (const kk in b) {
+                s(b[kk],k,v);
+            }
         }
     }
     s(buf,key,v);
-    if (key in v) {
-        return v[key];
+    if (v.length) {
+        return v;
     }
     return null;
+}
+
+const replace = (buf, key, val) => {
+    let flag = 0;
+    const s = (b,k,v) => {
+        if (b instanceof Array) {
+            for (let i=0,len=b.length; i<len; i++){
+                s(b[i],k,v);
+            }
+        } else if (b instanceof Object) {
+            if (k in b) {
+                b[k] = v;
+                flag += 1;
+            }
+            for (const kk in b) {
+                s(b[kk],k,v);
+            }
+        }
+    }
+    s(buf,key,val);
+    return flag;
 }
 
 cmds.gen_sub_v2 = (buf) => {
@@ -41,9 +60,12 @@ cmds.new = (cache, data) => {
 };
 
 cmds.mod = (cache, data) => {
+    let d = {};
     for (const key in data) {
-        cache[key] = clone(data[key]);
+        let n = replace(cache, key, data[key]);
+        d[key] = n;
     }
+    return {'code':1, 'msg': 'success', 'data': d};
 };
 
 cmds.get = (cache, data) => {
