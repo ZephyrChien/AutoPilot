@@ -1,0 +1,14 @@
+{
+  "name": "AutoPilot",
+  "version": "1.0.0",
+  "description": "Node.js on Docker",
+  "author": "zephyr",
+  "main": "server.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "fs": "*",
+    "http": "*"
+  }
+}
