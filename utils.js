@@ -2,19 +2,150 @@
 
 var utils = {};
 const fs = require('fs');
-const config = require('./config');
-const cmds = require('./cmds');
+const uuid = require('uuid');
+const crypto = require('crypto');
 
-utils.auth = (headers) => {
-   if (headers['user-agent'] != config.ua) {
+utils.uuid = () => {
+    return uuid.v4();
+}
+
+utils.md5sum = (buf) => {
+    return crypto.createHash('md5').update(buf).digest('hex');
+};
+
+utils.base64 = (buf) => {
+    let buff;
+    if (typeof buf == 'string') {
+        buff = Buffer.from(buf);
+    } else {
+        buff = Buffer.from(JSON.stringify(buf));
+    }
+    return buff.toString('base64');
+};
+
+utils.clone = (buf) => {
+    return JSON.parse(JSON.stringify(buf));
+};
+
+utils.search = (buf, key) => {
+    let v = [];
+    const s = (b,k,v) => {
+        if (b instanceof Array) {
+            for (let i=0,len=b.length; i<len; i++){
+                s(b[i],k,v);
+            }
+        } else if (b instanceof Object) {
+            if (k in b) {
+                v.push(b[k]);
+            }
+            for (const kk in b) {
+                s(b[kk],k,v);
+            }
+        }
+    }
+    s(buf,key,v);
+    return v;
+};
+
+utils.replace = (buf, key, val) => {
+    let flag = 0;
+    const s = (b,k,v) => {
+        if (b instanceof Array) {
+            for (let i=0,len=b.length; i<len; i++){
+                s(b[i],k,v);
+            }
+        } else if (b instanceof Object) {
+            if (k in b) {
+                b[k] = v;
+                flag += 1;
+            }
+            for (const kk in b) {
+                s(b[kk],k,v);
+            }
+        }
+    }
+    s(buf,key,val);
+    return flag;
+};
+
+utils.check_ua = (headers, ua) => {
+   if (headers['user-agent'] != ua) {
        return false;
    }
    return true;
 };
 
+utils.check_date = (t) => {
+    let month = new Date().getMonth() + 1;
+    let token = utils.md5sum(month.toString());
+    if (t != token) {
+        return false;
+    }
+    return true;
+}
+
+utils.check_req_body = (body) => {
+    let ret = false, msg = '';
+    const t_list = ['ss','v2'];
+    const cmd_list = ['new','mod','get','sub'];
+    if (!body['t'] || t_list.indexOf(body['t']) == -1) {
+        msg = 'api: unsupported t';
+    } else if (!body['cmd'] || cmd_list.indexOf(body['cmd']) == -1) {
+        msg = 'api: unsupported cmd';
+    } else if (!body['data']) {
+        msg = 'api: empty body';
+    } else {ret = true;}
+    return {ret, msg};
+};
+
+utils.check_form = (form) => {
+    let ret = false, msg = '';
+    const t = form.get('proto');
+    const ch = form.get('channel');
+    const t_list = ['ss','v2'];
+    const ch_list = ['cmcc', 'cucc', 'ctcc', 'auto'];
+    if (!t || t_list.indexOf(t) == -1) {
+        msg = 'sub: unsupported t';
+    } else if (!ch || ch_list.indexOf(ch) == -1) {
+        msg = 'sub: unsupported ch';
+    } else {ret = true;}
+    return {ret, msg};
+};
+
 utils.ret404 = (resp) => {
     resp.statusCode = 404;
     resp.end();
+};
+
+utils.read_config_sync = (fname) => {
+    let buf, config;
+    try {
+        buf = fs.readFileSync(fname);
+    } catch(err) {
+        console.error(err);
+        process.exit(1);
+    } finally {
+        if (!(config = utils.make_json(buf))) {
+            console.error ('conf: load failed');
+            process.exit(1);
+        }
+        console.log('conf: load %s', fname);
+    }
+    return config;
+};
+
+utils.load_swap = (cache, tag, fname) => {
+    fs.readFile(fname, (err, buf) => {
+        if (err) {
+            console.error(err);
+            process.exit(1);
+        }
+        if (!(cache[tag] = utils.make_json(buf))) {
+            console.error('swap: load failed');
+            process.exit(1);
+        }
+        console.log('swap: load %s', fname);
+    })
 };
 
 utils.flush = (cache, fname) => {
@@ -34,90 +165,6 @@ utils.make_json = (buf) => {
     } finally {
         return body;
     }
-};
-
-utils.check_body = (body) => {
-    let ret = false, msg = '';
-    const t_list = ['ss','v2'];
-    const cmd_list = ['new','mod','get','sub'];
-    if (!body['t'] || t_list.indexOf(body['t']) == -1) {
-        msg = 'api: unsupported t';
-    } else if (!body['cmd'] || cmd_list.indexOf(body['cmd']) == -1) {
-        msg = 'api: unsupported cmd';
-    } else if (!body['data']) {
-        msg = 'api: empty body';
-    } else {ret = true;}
-    return {ret, msg};
-};
-
-utils.make_resp = (resp, code, msg, resp_data) => {
-    let resp_body = {
-        code: code,
-        msg: msg,
-        data: resp_data
-    };
-    resp.setHeader('user-agent',config.ua);
-    resp.setHeader('content-type','application/json');
-    resp.write(JSON.stringify(resp_body,(key, val) => {
-        if (val !== null) return val;
-    }));
-    resp.end();
-};
-
-utils.handler = (cache, resp, body) => {
-    if (!(body.t in cache)) {
-        const msg = 'cache: unknown t';
-        utils.make_resp(resp, 0, msg, null);
-        return;
-    }
-    switch (body.t) {
-        case 'v2' :
-            utils.handle_v2(cache['v2'], resp, body);
-            break;
-        case 'ss' :
-            utils.handle_ss(cache['ss'], resp, body);
-            break;
-        default :
-            break;
-    }
-};
-
-utils.handle_v2 = (cache_v2, resp, body) => {
-    if (body.cmd == 'sub') {
-        let ret = cmds.gen_sub_v2(cache_v2, body.data);
-        utils.make_resp(resp, ret.code, ret.msg, ret.data);
-    } else {
-        utils.handle_common(cache_v2, resp, body);
-    }
-};
-
-utils.handle_ss = (cache_ss, resp, body) => {
-    if (body.cmd == 'sub') {
-        let ret = cmds.gen_sub_v2(cache_v2, body.data);
-        utils.make_resp(resp, ret.code, ret.msg, ret.data);
-    } else {
-        utils.handle_common(cache_ss, resp, body);
-    }
-};
-
-utils.handle_common = (cache, resp, body) => {
-    let ret = {};
-    switch (body.cmd) {
-        case 'new':
-            ret = cmds.new(cache, body.data);
-            break;
-        case 'mod':
-            ret = cmds.mod(cache, body.data);
-            break;
-        case 'get':
-            ret = cmds.get(cache, body.data);
-            break;
-        default:
-            ret = {'code': 0, 'msg': 'unknown', 'data': null};
-            break;
-    }
-    utils.make_resp(resp, ret.code, ret.msg, ret.data);
-    utils.flush(cache,config.swap_file[body.t]);
 };
 
 module.exports = utils;

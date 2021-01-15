@@ -1,0 +1,38 @@
+{
+    "ua": "auto_pilot",
+    "server_ip": "127.0.0.1",
+    "server_port": "20000",
+    "server_path": "/",
+    "update_interval" : "86400000",
+    "ch": {
+        "cmcc": "1.1.1.1",
+        "ctcc": "2.2.2.2",
+        "cucc": "3.3.3.3"
+    },
+    "v2": [
+        {
+            "tag": "test",
+            "api": {
+                "host": "127.0.0.1",
+                "port": "10000",
+                "path": "/"
+            },
+            "manual": {
+                "add": "auto",
+                "port": "80"
+            }
+        },
+        {
+            "tag": "test2",
+            "api": {
+                "host": "127.0.0.1",
+                "port": "10001",
+                "path": "/"
+            },
+            "manual": {
+                "add": "auto",
+                "port": "443"
+            }
+        }
+    ]
+}

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "fs": "*",
-    "http": "*"
+    "http": "*",
+    "uuid": "^8.3.2"
   }
 }

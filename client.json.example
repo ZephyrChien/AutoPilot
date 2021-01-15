@@ -1,0 +1,10 @@
+{
+    "ua": "auto_pilot",
+    "server_addr": "127.0.0.1",
+    "server_port": "10000",
+    "server_path": "/",
+    "swap_file": {
+        "v2": "swap.json"
+    }
+}
+
