@@ -4,6 +4,7 @@
     "server_port": "20000",
     "server_path": "/",
     "update_interval" : "86400000",
+    "private_key": "key",
     "ch": {
         "cmcc": "1.1.1.1",
         "ctcc": "2.2.2.2",

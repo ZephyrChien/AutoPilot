@@ -23,6 +23,50 @@ utils.base64 = (buf) => {
     return buff.toString('base64');
 };
 
+utils.client_encrypt = (pub, buf) => {
+    const enc =  crypto.publicEncrypt({
+        'key': pub,
+        'padding': crypto.constants.RSA_PKCS1_PADDING
+    }, buf);
+    return enc.toString('base64');
+}
+
+utils.client_decrypt = (pub, buf) => {
+    let plain = null;
+    try {
+        plain = crypto.publicDecrypt({
+            'key': pub,
+            'padding': crypto.constants.RSA_PKCS1_PADDING,
+            'encoding': 'base64'
+        }, buf);
+    } catch(_) {
+    } finally {
+        return plain;
+    }
+}
+
+utils.server_encrypt = (key, buf) => {
+    const enc =  crypto.privateEncrypt({
+        'key': key,
+        'padding': crypto.constants.RSA_PKCS1_PADDING
+    }, buf);
+    return enc.toString('base64');
+}
+
+utils.server_decrypt = (key, buf) => {
+    let plain = null;
+    try {
+        plain = crypto.privateDecrypt({
+            'key': key,
+            'padding': crypto.constants.RSA_PKCS1_PADDING,
+            'encoding': 'base64'
+        }, buf);
+    } catch(_) {
+    } finally {
+        return plain;
+    }
+}
+
 utils.clone = (buf) => {
     return JSON.parse(JSON.stringify(buf));
 };

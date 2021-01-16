@@ -3,6 +3,7 @@
     "server_addr": "127.0.0.1",
     "server_port": "10000",
     "server_path": "/",
+    "public_key": "key",
     "swap_file": {
         "v2": "swap.json"
     }

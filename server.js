@@ -236,7 +236,7 @@ const get_client = (t, tag) => {
             });
             resp.on('end', () => {
                 const buff = buf.concat();
-                const body = utils.make_json(buff);
+                const body = utils.make_json(utils.server_decrypt(config.private_key, buff));
                 if (!body) {
                     reject('getcli: empty resp');
                 }
@@ -254,7 +254,7 @@ const get_client = (t, tag) => {
             'cmd': 'sub',
             'data': '0'
         });
-		req.write(payload);
+		req.write(utils.server_encrypt(config.private_key, payload));
         req.end();
     }).then((sub_data) => {
         for (const key in sub_data) {
@@ -292,7 +292,7 @@ const mod_client = (t, cli, payload) => {
             });
             resp.on('end', () => {
                 const buff = buf.concat();
-                const body = utils.make_json(buff);
+                const body = utils.make_json(utils.server_decrypt(config.private_key, buff));
                 if (!body) {
                     reject('modcli: empty resp');
                 }
@@ -307,7 +307,7 @@ const mod_client = (t, cli, payload) => {
             'cmd': 'mod',
             'data': payload
         });
-        req.write(full_payload);
+        req.write(utils.server_encrypt(config.private_key, full_payload));
         req.end();
     }).then(() => {
         for (const key in payload) {

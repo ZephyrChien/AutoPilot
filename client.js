@@ -14,9 +14,9 @@ const make_resp = (resp, code, msg, resp_data) => {
     };
     resp.setHeader('user-agent',config.ua);
     resp.setHeader('content-type','application/json');
-    resp.write(JSON.stringify(resp_body,(key, val) => {
+    resp.write(utils.client_encrypt(config.public_key, JSON.stringify(resp_body,(key, val) => {
         if (val !== null) return val;
-    }));
+    })));
     resp.end();
 };
 
@@ -167,7 +167,7 @@ const server = http.createServer((req, resp) => {
     });
     req.on('end', () => {
         const buff = Buffer.concat(buf);
-        const body = utils.make_json(buff);
+        const body = utils.make_json(utils.client_decrypt(config.public_key, buff));
         if (!body) {
             make_resp(resp, 0, msg, null);
             return;
