@@ -167,4 +167,20 @@ utils.make_json = (buf) => {
     }
 };
 
+utils.parse_url = (_url) => {
+    const url = new URL(_url);
+    const proto = url.protocol.replace(':', '');
+    const host = url.hostname;
+    const port = url.port;
+    const path = url.pathname;
+    return {proto, host, port, path};
+}
+
+utils.get_real_ip = (req) => {
+    let ip = req.headers['cf-connecting-ip'];
+    if (!ip) ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+    if (!ip) ip = req.socket.remoteAddress;
+    return ip;
+}
+
 module.exports = utils;

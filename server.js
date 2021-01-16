@@ -9,8 +9,14 @@ var clients = {}; //cache
 var config = {};
 
 const server = http.createServer((req, resp) => {
+    const ip = req.headers[config.sub_header];
     const url = new URL(req.url, 'https://' + req.headers.host);
     const form = url.searchParams;
+    if (!ip) {
+        utils.ret404(resp);
+        const unexpected_ip = utils.get_real_ip(req);
+        console.log('unexpected: %s',unexpected_ip);
+    }
     if (!utils.check_ua(req.headers, config.ua) || req.method != 'GET' || !utils.check_date(form.get('token'))) {
         utils.ret404(resp);
         //req.removeAllListeners();
@@ -27,40 +33,114 @@ const server = http.createServer((req, resp) => {
     });
     req.on('data', (_) => {});
     req.on('end', () => {
-        handler(clients, resp, form);
+        handler(clients, resp, form, ip);
     });
 });
 
-const handler = (clients, resp, form) => {
+const handler = (clients, resp, form, ip) => {
     const t = form.get('proto');
     const ch = form.get('channel');
-    // pre handle
-    let ret;
-    switch (t) {
-        case 'v2':
-            ret = handle_v2(clients['v2'], ch);
-            break;
-        case 'ss':
-            ret = handle_ss(clients['ss'], ch);
-            break;
-        default:
-            break;
-    }
-    resp.write(ret);
-    resp.end();
+    select_ch(ch, ip).then((inbound) => {
+        let ret;
+        switch (t) {
+            case 'v2':
+                ret = handle_v2(clients['v2'], inbound);
+                break;
+            case 'ss':
+                ret = handle_ss(clients['ss'], inbound);
+                break;
+            default:
+                break;
+        }
+        resp.write(ret);
+        resp.end();
+    });
 };
 
-const select_ch = (ch) => {
-    if (ch != 'auto') {
-        return config.ch[ch];
-    }
+const select_ch = (ch, ip) => {
+    let inbound;
+    const sel_ch = (isp) => {
+        const cmcc = '移动';
+        const ctcc = '电信';
+        const cucc = '联通';
+        let i;
+        switch (isp) {
+            case cmcc:
+                i = config.ch.cmcc;
+                break;
+            case ctcc:
+                i = config.ch.ctcc;
+                break;
+            case cucc:
+                i = config.ch.cucc;
+                break;
+            default:
+                i = config.ch.cmcc;
+                break;
+        }
+        return i;
+    };
+    return Promise((resolve) => {
+        if (ch != 'auto') {
+            inbound = config.ch[ch];
+            resolve(inbound);
+        } else {
+            isplookup(ip).then((isp) => {
+                inbound = sel_ch(isp);
+                resolve(inbound);
+            });
+        }
+    });
 };
 
-const handle_v2 = (clients_v2, ch) => {
+const isplookup = (ip) => {
+    const {proto, host, port, path} = utils.parse_url(config.iplookup_api);
+    const opts = {
+        'host': host,
+        'port': port,
+        'path': path,
+        'method': 'POST',
+        'headers': {
+            'User-Agent': config.ua,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Connection': 'close'
+        }
+    };
+    return new Promise ((resolve, reject) => {
+        const req = make_req(proto, opts, (resp) => {
+            let buf = [];
+            resp.on('data', (chunk) => {
+                buf.push(chunk);
+            });
+            resp.on('end', () => {
+                const buff = buf.concat();
+                const body = utils.make_json(buff);
+                if (!body) {
+                    reject('iplookup: empty resp');
+                }
+                if (!body.code) {
+                    reject('iplookup: remote denied');
+                }
+                resolve(body.isp);
+            });
+        }).on('error', (_) => {
+            reject('iplookup: req failed');
+        });
+        let payload = new URLSearchParams();
+        payload.append('ip',ip);
+        payload.append('isp',true);
+		req.write(payload.toString());
+        req.end();
+    }).catch((err) => {
+        console.error(err);
+    });
+}
+
+const handle_v2 = (clients_v2, inbound) => {
     let buf = [];
     const cpy = utils.clone(clients_v2);
     for(let i=0,len=cpy.length; i<len; i++) {
-        cpy[i]['add'] = select_ch(ch);
+        cpy[i]['add'] = inbound;
         const link = 'vmess://' + utils.base64(cpy[i]);
         buf.push(link);
     }
@@ -68,18 +148,11 @@ const handle_v2 = (clients_v2, ch) => {
     return sub;
 };
 
-const make_req = (opts, callback) => {
+const make_req = (proto, options, callback) => {
     let req;
-    const options = {
-        'host': opts.host,
-        'port': opts.port,
-        'path': opts.path,
-        'method': opts.method,
-        'headers': opts.headers
-    };
-    if (opts.proto == 'https') {
+    if (proto == 'https') {
         req = https.request(options, callback);
-    }else if (opts.proto == 'http') {
+    }else if (proto == 'http') {
         req = http.request(options, callback);
     }
     return req;
@@ -140,11 +213,11 @@ const get_conf = (t, tag) => {
 const get_client = (t, tag) => {
     let cli, empty = false;
     const conf = get_conf(t, tag);
+    const {proto, host, port, path} = utils.parse_url(conf.api);
     const opts = {
-        'proto': 'http',
-        'host': conf.api.host,
-        'port': conf.api.port,
-        'path': conf.api.path,
+        'host': host,
+        'port': port,
+        'path': path,
         'method': 'POST',
         'headers': {
             'User-Agent': config.ua,
@@ -156,7 +229,7 @@ const get_client = (t, tag) => {
         cli = {}; empty = true;
     }
     return new Promise ((resolve, reject) => {
-        const req = make_req(opts, (resp) => {
+        const req = make_req(proto, opts, (resp) => {
             let buf = [];
             resp.on('data', (chunk) => {
                 buf.push(chunk);
@@ -198,12 +271,12 @@ const get_client = (t, tag) => {
 
 // remote
 const mod_client = (t, cli, payload) => {    
-    const conf = get_conf(t, cli.ps);                                                                                                                                                                                                                                                                                                                                     
+    const conf = get_conf(t, cli.ps);
+    const {proto, host, port, path} = utils.parse_url(conf.api);                                                                                                                                                                                                                                                                                                                              
     const opts = {
-        'proto': 'http',
-        'host': conf.api.host,
-        'port': conf.api.port,
-        'path': conf.api.path,
+        'host': host,
+        'port': port,
+        'path': path,
         'method': 'POST',
         'headers': {
             'User-Agent': config.ua,
@@ -212,7 +285,7 @@ const mod_client = (t, cli, payload) => {
         }
     };
     return new Promise ((resolve, reject) => {
-        const req = make_req(opts, (resp) => {
+        const req = make_req(proto, opts, (resp) => {
             let buf = [];
             resp.on('data', (chunk) => {
                 buf.push(chunk);
