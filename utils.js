@@ -4,6 +4,7 @@ var utils = {};
 const fs = require('fs');
 const uuid = require('uuid');
 const crypto = require('crypto');
+const { time } = require('console');
 
 utils.uuid = () => {
     return uuid.v4();
@@ -235,6 +236,27 @@ utils.get_real_ip = (req) => {
     }
     if (!ip) ip = req.socket.remoteAddress;
     return ip;
+}
+
+utils.to_next_half_hour = () => {
+    let d = new Date();
+    if (d.getMinutes > 30) {
+        return d.setMinutes(30) - Date.now() + 30*60*1000;
+    } else {
+        return d.setMinutes(30) - Date.now();
+    }
+}
+
+utils.to_spec_time = (due) => {
+    const offset = -new Date().getTimezoneOffset()/60;
+    const due_arr = due.split(':');
+    const hh = due_arr[0], mm = due_arr[1], ss = due_arr[2];
+    let d = new Date(); d.setHours(hh + offset); d.setMinutes(mm); d.setSeconds(ss);
+    if (d.getTime() > Date.now()) {
+        return d.getTime() - Date.now();
+    } else {
+        return d.getTime() - Date.now() + 24*60*60*1000;
+    }
 }
 
 module.exports = utils;
