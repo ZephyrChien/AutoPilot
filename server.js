@@ -7,6 +7,7 @@ const utils = require('./utils');
 
 var clients = {}; //cache
 var config = {};
+var private_key = null;
 
 const server = http.createServer((req, resp) => {
     const ip = req.headers[config.sub_header];
@@ -80,13 +81,14 @@ const select_ch = (ch, ip) => {
         }
         return i;
     };
-    return Promise((resolve) => {
+    return new Promise((resolve) => {
         if (ch != 'auto') {
             inbound = config.ch[ch];
             resolve(inbound);
         } else {
             isplookup(ip).then((isp) => {
                 inbound = sel_ch(isp);
+                console.log('auto')
                 resolve(inbound);
             });
         }
@@ -235,13 +237,15 @@ const get_client = (t, tag) => {
                 buf.push(chunk);
             });
             resp.on('end', () => {
-                const buff = buf.concat();
-                const body = utils.make_json(utils.server_decrypt(config.private_key, buff));
+                const buff = buf.concat().toString();
+                const body = utils.make_json(utils.server_decrypt(private_key, Buffer.from(buff, 'base64')));
                 if (!body) {
                     reject('getcli: empty resp');
+                    return
                 }
                 if (!body.code) {
                     reject('getcli: remote denied');
+                    return
                 }
                 const sub_data = gen_sub_data(body.data, conf);
                 resolve(sub_data);
@@ -254,7 +258,7 @@ const get_client = (t, tag) => {
             'cmd': 'sub',
             'data': '0'
         });
-		req.write(utils.server_encrypt(config.private_key, payload));
+		req.write(utils.server_encrypt(private_key, Buffer.from(payload)));
         req.end();
     }).then((sub_data) => {
         for (const key in sub_data) {
@@ -291,13 +295,15 @@ const mod_client = (t, cli, payload) => {
                 buf.push(chunk);
             });
             resp.on('end', () => {
-                const buff = buf.concat();
-                const body = utils.make_json(utils.server_decrypt(config.private_key, buff));
+                const buff = buf.concat().toString();
+                const body = utils.make_json(utils.server_decrypt(private_key, Buffer.from(buff, 'base64')));
                 if (!body) {
                     reject('modcli: empty resp');
+                    return
                 }
                 if (!body.code) {
                     reject('modcli: ' + body.msg);
+                    return
                 }
                 resolve();
             });
@@ -307,7 +313,7 @@ const mod_client = (t, cli, payload) => {
             'cmd': 'mod',
             'data': payload
         });
-        req.write(utils.server_encrypt(config.private_key, full_payload));
+        req.write(utils.server_encrypt(private_key, Buffer.from(full_payload)));
         req.end();
     }).then(() => {
         for (const key in payload) {
@@ -354,7 +360,8 @@ function maintain_clients(t) {
 }
 
 function main() {
-    config = utils.read_config_sync('server.json');
+    config = utils.load_config_sync('server.json');
+    private_key = utils.load_key_sync(config.private_key);
     init_clients('v2');
     server.listen(config.server_port, config.server_addr);
     setTimeout(maintain_clients, 30*1000, 'v2');

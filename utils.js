@@ -36,8 +36,7 @@ utils.client_decrypt = (pub, buf) => {
     try {
         plain = crypto.publicDecrypt({
             'key': pub,
-            'padding': crypto.constants.RSA_PKCS1_PADDING,
-            'encoding': 'base64'
+            'padding': crypto.constants.RSA_PKCS1_PADDING
         }, buf);
     } catch(_) {
     } finally {
@@ -58,8 +57,7 @@ utils.server_decrypt = (key, buf) => {
     try {
         plain = crypto.privateDecrypt({
             'key': key,
-            'padding': crypto.constants.RSA_PKCS1_PADDING,
-            'encoding': 'base64'
+            'padding': crypto.constants.RSA_PKCS1_PADDING
         }, buf);
     } catch(_) {
     } finally {
@@ -161,7 +159,7 @@ utils.ret404 = (resp) => {
     resp.end();
 };
 
-utils.read_config_sync = (fname) => {
+utils.load_config_sync = (fname) => {
     let buf, config;
     try {
         buf = fs.readFileSync(fname);
@@ -170,12 +168,22 @@ utils.read_config_sync = (fname) => {
         process.exit(1);
     } finally {
         if (!(config = utils.make_json(buf))) {
-            console.error ('conf: load failed');
             process.exit(1);
         }
-        console.log('conf: load %s', fname);
     }
     return config;
+};
+
+utils.load_key_sync = (fname) => {
+    let buf;
+    try {
+        buf = fs.readFileSync(fname);
+    } catch(err) {
+        console.error(err);
+        process.exit(1);
+    } finally {
+        return buf;
+    }
 };
 
 utils.load_swap = (cache, tag, fname) => {
@@ -222,7 +230,9 @@ utils.parse_url = (_url) => {
 
 utils.get_real_ip = (req) => {
     let ip = req.headers['cf-connecting-ip'];
-    if (!ip) ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+    if (!ip && req.headers['x-forwarded-for']) {
+        ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+    }
     if (!ip) ip = req.socket.remoteAddress;
     return ip;
 }

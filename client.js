@@ -5,18 +5,19 @@ const utils = require('./utils');
 
 var cache = {};
 var config = {};
+var public_key = null;
 
 const make_resp = (resp, code, msg, resp_data) => {
     let resp_body = {
-        code: code,
-        msg: msg,
-        data: resp_data
+        'code': code,
+        'msg': msg,
+        'data': resp_data
     };
     resp.setHeader('user-agent',config.ua);
     resp.setHeader('content-type','application/json');
-    resp.write(utils.client_encrypt(config.public_key, JSON.stringify(resp_body,(key, val) => {
+    resp.write(utils.client_encrypt(public_key, Buffer.from(JSON.stringify(resp_body,(key, val) => {
         if (val !== null) return val;
-    })));
+    }))));
     resp.end();
 };
 
@@ -166,10 +167,10 @@ const server = http.createServer((req, resp) => {
         buf.push(chunk);
     });
     req.on('end', () => {
-        const buff = Buffer.concat(buf);
-        const body = utils.make_json(utils.client_decrypt(config.public_key, buff));
+        const buff = Buffer.concat(buf).toString();
+        const body = utils.make_json(utils.client_decrypt(public_key, Buffer.from(buff, 'base64')));
         if (!body) {
-            make_resp(resp, 0, msg, null);
+            make_resp(resp, 0, null, null);
             return;
         }
         const {ret, msg} = utils.check_req_body(body);
@@ -182,7 +183,8 @@ const server = http.createServer((req, resp) => {
 });
 
 function main() {
-    config = utils.read_config_sync('client.json');
+    config = utils.load_config_sync('client.json');
+    public_key = utils.load_key_sync(config.public_key);
     for (const key in config.swap_file) {
         utils.load_swap(cache, key, config.swap_file[key]);
     }
