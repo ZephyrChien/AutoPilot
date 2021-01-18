@@ -3,12 +3,12 @@
 const http = require('http');
 const utils = require('./utils');
 
-var cache = {};
-var config = {};
-var public_key = null;
+const cache = {'v2':null, 'ss':null};
+const config = utils.load_config_sync('client.json');
+const public_key = utils.load_key_sync(config.public_key);
 
-const make_resp = (resp, code, msg, resp_data) => {
-    let resp_body = {
+function make_resp(resp, code, msg, resp_data) {
+    const resp_body = {
         'code': code,
         'msg': msg,
         'data': resp_data
@@ -22,7 +22,7 @@ const make_resp = (resp, code, msg, resp_data) => {
 };
 
 // cmds
-var cmds = {};
+const cmds = {};
 
 const gen_pre_process_func = (rules) => {
     const pre_process_func = (sub) => {
@@ -33,128 +33,89 @@ const gen_pre_process_func = (rules) => {
     return pre_process_func;
 }
 
-cmds.sub = (cache) => {
-    /*
-        'v': '2',
-        'ps': '',
-        'add': '',
-        'port': '',
-        'id': '',
-        'aid': '1',
-        'net': '',
-        'type': 'none',
-        'host': '',
-        'path': '',
-        'tls': 'tls'
+cmds.sub = (t) => {
+    const sub_v2 = (_sub) => {
+        const mapper = {
+            'add': 'listen', // sub.add equals config.inbounds[0].listen
+            'port': 'port',
+            'id': 'id',
+            'net': 'network',
+            'path': 'path'
+        }
+        const buf = utils.clone(cache.v2.inbounds[0]);
+        for (const key in mapper) {
+            _sub[key] = utils.search(buf, mapper[key])[0].toString();
+        }
     }
-    */
-    let sub = {};
-    let mapper = {
-        'add': 'listen', // sub.add equals config.inbounds[0].listen
-        'port': 'port',
-        'id': 'id',
-        'net': 'network',
-        'path': 'path'
+    const sub = {};
+    if (t == 'v2') {
+        sub_v2(sub);
     }
-    let buf = utils.clone(cache);
-    let inbounds = utils.search(buf, 'inbounds');
-    if (!inbounds.length) {
-        return {'code':0, 'msg': 'no available inbounds', 'data': null};
-    }
-    let buff = inbounds[0][0];
-    for (const key in mapper) {
-        sub[key] = utils.search(buff, mapper[key])[0].toString();
-    }
-    //gen_pre_process_func(data)(sub);
-    //let b = Buffer.from(JSON.stringify(sub));
-    //let sub_base64 = 'vmess://' + b.toString('base64');
     return {'code':1, 'msg': 'success', 'data': sub};
 };
 
-cmds.new = (cache, data) => {
-    cache = utils.clone(data);
+cmds.new = (t, data) => {
+    cache[t] = utils.clone(data);
     return {'code':1, 'msg': 'success', 'data': null};
 };
 
-cmds.mod = (cache, data) => {
-    let d = {};
+cmds.mod = (cache_t, data) => {
+    const d = {};
     for (const key in data) {
-        let n = utils.replace(cache, key, data[key]);
+        const n = utils.replace(cache_t, key, data[key]);
         d[key] = n;
     }
-    cache = utils.clone(cache);
     return {'code':1, 'msg': 'success', 'data': d};
 };
 
-cmds.get = (cache, data) => {
-    let buf = utils.clone(cache);
-    let d = {};
+cmds.get = (cache_t, data) => {
+    const buf = cache_t;
+    const d = {};
     for (let i=0,len=data.length; i<len; i++) {
-        let key = data[i];
-        d[key] = utils.search(buf,key);
+        const key = data[i];
+        d[key] = utils.search(buf, key);
     }
     return {'code':1, 'msg': 'success', 'data': d};
 };
 
-// handlers
-const handler = (cache, resp, body) => {
-    if (!(body.t in cache)) {
-        const msg = 'cache: unknown t';
-        make_resp(resp, 0, msg, null);
-        return;
-    }
-    switch (body.t) {
-        case 'v2' :
-            handle_v2(cache['v2'], resp, body);
-            break;
-        case 'ss' :
-            handle_ss(cache['ss'], resp, body);
-            break;
-        default :
-            break;
-    }
-};
-
-const handle_v2 = (cache_v2, resp, body) => {
-    if (body.cmd == 'sub') {
-        let ret = cmds.sub(cache_v2);
-        make_resp(resp, ret.code, ret.msg, ret.data);
-    } else {
-        handle_common(cache_v2, resp, body);
-    }
-};
-
-const handle_ss = (cache_ss, resp, body) => {
-    if (body.cmd == 'sub') {
-        let ret = cmds.sub(cache_v2, body.data);
-        make_resp(resp, ret.code, ret.msg, ret.data);
-    } else {
-        handle_common(cache_ss, resp, body);
-    }
-};
-
-const handle_common = (cache, resp, body) => {
-    let ret = {};
-    switch (body.cmd) {
+function handle_common(t, cmd, data) {
+    let ret;
+    switch (cmd) {
         case 'new':
-            ret = cmds.new(cache, body.data);
+            ret = cmds.new(t, data);
             break;
         case 'mod':
-            ret = cmds.mod(cache, body.data);
+            ret = cmds.mod(cache[t], data);
             break;
         case 'get':
-            ret = cmds.get(cache, body.data);
+            ret = cmds.get(cache[t], data);
             break;
         default:
             ret = {'code': 0, 'msg': 'unknown', 'data': null};
             break;
     }
+    utils.flush(cache, config.swap_file[t]);
+    return ret;
+};
+
+const handler = (resp, body) => {
+    const {t, cmd, data} = body;
+    if (!cache[t]) {
+        const msg = 'cache: unknown t';
+        make_resp(resp, 0, msg, null);
+        return;
+    }
+    let ret;
+    if (cmd == 'sub') {
+        ret = cmds.sub(t);
+    } else {
+        ret = handle_common(t, cmd, data);
+    }
     make_resp(resp, ret.code, ret.msg, ret.data);
-    utils.flush(cache, config.swap_file[body.t]);
 };
 
 const server = http.createServer((req, resp) => {
-    let buf = [];
+    const buf = [];
     if (!utils.check_ua(req.headers, config.ua)) {
         utils.ret404(resp);
         //req.removeAllListeners();
@@ -178,15 +139,13 @@ const server = http.createServer((req, resp) => {
             make_resp(resp, 0, msg, null);
             return;
         }
-        handler(cache, resp, body);
+        handler(resp, body);
     });
 });
 
 function main() {
-    config = utils.load_config_sync('client.json');
-    public_key = utils.load_key_sync(config.public_key);
-    for (const key in config.swap_file) {
-        utils.load_swap(cache, key, config.swap_file[key]);
+    for (const t in config.swap_file) {
+        utils.load_swap(cache, t, config.swap_file[t]);
     }
     console.log('http: start to serve');
     server.listen(config.server_port, config.server_addr);

@@ -1,6 +1,6 @@
 'use strict';
 
-var utils = {};
+const utils = {};
 const fs = require('fs');
 const uuid = require('uuid');
 const crypto = require('crypto');
@@ -71,7 +71,7 @@ utils.clone = (buf) => {
 };
 
 utils.search = (buf, key) => {
-    let v = [];
+    const v = [];
     const s = (b,k,v) => {
         if (b instanceof Array) {
             for (let i=0,len=b.length; i<len; i++){
@@ -91,7 +91,7 @@ utils.search = (buf, key) => {
 };
 
 utils.replace = (buf, key, val) => {
-    let flag = 0;
+    let count = 0;
     const s = (b,k,v) => {
         if (b instanceof Array) {
             for (let i=0,len=b.length; i<len; i++){
@@ -100,7 +100,7 @@ utils.replace = (buf, key, val) => {
         } else if (b instanceof Object) {
             if (k in b) {
                 b[k] = v;
-                flag += 1;
+                count += 1;
             }
             for (const kk in b) {
                 s(b[kk],k,v);
@@ -108,7 +108,7 @@ utils.replace = (buf, key, val) => {
         }
     }
     s(buf,key,val);
-    return flag;
+    return count;
 };
 
 utils.check_ua = (headers, ua) => {
@@ -119,8 +119,8 @@ utils.check_ua = (headers, ua) => {
 };
 
 utils.check_date = (t) => {
-    let month = new Date().getMonth() + 1;
-    let token = utils.md5sum(month.toString());
+    const month = new Date().getMonth() + 1;
+    const token = utils.md5sum(month.toString());
     if (t != token) {
         return false;
     }
@@ -187,13 +187,13 @@ utils.load_key_sync = (fname) => {
     }
 };
 
-utils.load_swap = (cache, tag, fname) => {
+utils.load_swap = (cache, t, fname) => {
     fs.readFile(fname, (err, buf) => {
         if (err) {
             console.error(err);
             process.exit(1);
         }
-        if (!(cache[tag] = utils.make_json(buf))) {
+        if (!(cache[t] = utils.make_json(buf))) {
             console.error('swap: load failed');
             process.exit(1);
         }
@@ -239,7 +239,7 @@ utils.get_real_ip = (req) => {
 }
 
 utils.to_next_half_hour = () => {
-    let d = new Date();
+    const d = new Date();
     if (d.getMinutes() > 30) {
         return d.setMinutes(30) - Date.now() + 30*60*1000;
     } else {
