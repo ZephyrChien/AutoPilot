@@ -132,11 +132,11 @@ utils.check_req_body = (body) => {
     const t_list = ['ss','v2'];
     const cmd_list = ['new','mod','get','sub'];
     if (!body['t'] || t_list.indexOf(body['t']) == -1) {
-        msg = 'api: unsupported t';
+        msg = 'unsupported t';
     } else if (!body['cmd'] || cmd_list.indexOf(body['cmd']) == -1) {
-        msg = 'api: unsupported cmd';
+        msg = 'unsupported cmd';
     } else if (!body['data']) {
-        msg = 'api: empty body';
+        msg = 'empty data';
     } else {ret = true;}
     return {ret, msg};
 };
@@ -148,9 +148,9 @@ utils.check_form = (form) => {
     const t_list = ['ss','v2'];
     const ch_list = ['cmcc', 'cucc', 'ctcc', 'auto'];
     if (!t || t_list.indexOf(t) == -1) {
-        msg = 'sub: unsupported t';
+        msg = 'unsupported t';
     } else if (!ch || ch_list.indexOf(ch) == -1) {
-        msg = 'sub: unsupported ch';
+        msg = 'unsupported ch';
     } else {ret = true;}
     return {ret, msg};
 };
@@ -197,7 +197,6 @@ utils.load_swap = (cache, t, fname) => {
             console.error('swap: load failed');
             process.exit(1);
         }
-        console.log('swap: load %s', fname);
     })
 };
 
@@ -214,7 +213,6 @@ utils.make_json = (buf) => {
     try {
         body = JSON.parse(buf);
     } catch (_) {
-        console.error('invalid json');
     } finally {
         return body;
     }
@@ -263,6 +261,27 @@ utils.to_spec_time = (due) => {
         return d.getTime() - Date.now();
     } else {
         return d.getTime() - Date.now() + 24*60*60*1000;
+    }
+}
+
+utils.logger = class {
+    constructor(logfile, is_console, is_logfile) {
+        this.fp = logfile;
+        this.p1 = is_console;
+        this.p2 = is_logfile;
+    }
+    stat() {
+        return {'fp': this.fp, 'p1': this.p1, 'p2': this.p2};
+    }
+    write(msg) {
+        const d = new Date().toString().split(' ').slice(1,5).join(' ');
+        const text = `[${d}]| ${msg}`;
+        if (this.p1) {
+            console.log(text);
+        }
+        if (this.p2) {
+            fs.appendFile(this.fp, text + '\n', (_) => {});
+        }
     }
 }
 

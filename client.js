@@ -7,6 +7,8 @@ const cache = {'v2':null, 'ss':null};
 const config = utils.load_config_sync('client.json');
 const public_key = utils.load_key_sync(config.public_key);
 
+const logger = new utils.logger(config.log_file, true, false);
+
 function make_resp(resp, code, msg, resp_data) {
     const resp_body = {
         'code': code,
@@ -21,9 +23,6 @@ function make_resp(resp, code, msg, resp_data) {
     resp.end();
 };
 
-// cmds
-const cmds = {};
-
 const gen_pre_process_func = (rules) => {
     const pre_process_func = (sub) => {
         for (const key in rules) {
@@ -32,6 +31,9 @@ const gen_pre_process_func = (rules) => {
     };
     return pre_process_func;
 }
+
+// cmds
+const cmds = {};
 
 cmds.sub = (t) => {
     const sub_v2 = (_sub) => {
@@ -91,7 +93,7 @@ function handle_common(t, cmd, data) {
             ret = cmds.get(cache[t], data);
             break;
         default:
-            ret = {'code': 0, 'msg': 'unknown', 'data': null};
+            ret = {'code': 0, 'msg': 'unknown cmd', 'data': null};
             break;
     }
     utils.flush(cache, config.swap_file[t]);
@@ -101,7 +103,7 @@ function handle_common(t, cmd, data) {
 const handler = (resp, body) => {
     const {t, cmd, data} = body;
     if (!cache[t]) {
-        const msg = 'cache: unknown t';
+        const msg = 'unknown t';
         make_resp(resp, 0, msg, null);
         return;
     }
@@ -115,39 +117,53 @@ const handler = (resp, body) => {
 };
 
 const server = http.createServer((req, resp) => {
+    // write log
+    const ip = utils.get_real_ip(req);
+    const url = new URL(req.url, 'http://' + req.headers.host).href;
+    logger.write(`http: ${ip} ${req.method} ${url}`);
+    //
     const buf = [];
-    if (!utils.check_ua(req.headers, config.ua)) {
+    if (!utils.check_ua(req.headers, config.ua) || req.method != 'POST') {
         utils.ret404(resp);
         //req.removeAllListeners();
         return;
     }
-    req.on('error', (err) => {
-        console.error(err);
+    req.on('error', (_) => {
+        logger.write('http: bad request');
     });
     req.on('data', (chunk) => {
-        buf.push(chunk);
+        const plain = utils.client_decrypt(public_key, Buffer.from(chunk.toString(),'base64'));
+        if(plain === null) {
+            utils.ret404(resp);
+            req.removeAllListeners();
+        }
+        buf.push(plain);
     });
     req.on('end', () => {
         const buff = Buffer.concat(buf).toString();
-        const body = utils.make_json(utils.client_decrypt(public_key, Buffer.from(buff, 'base64')));
+        //const body = utils.make_json(utils.client_decrypt(public_key, Buffer.from(buff, 'base64')));
+        const body = utils.make_json(buff);
         if (!body) {
+            logger.write('api: corrupted data');
             make_resp(resp, 0, null, null);
             return;
         }
         const {ret, msg} = utils.check_req_body(body);
         if (!ret) {
             make_resp(resp, 0, msg, null);
+            logger.write(`api: response body error, ${msg}`);
             return;
         }
         handler(resp, body);
+        logger.write(`api: ${body.cmd}`);
     });
 });
 
 function main() {
+    logger.write('app: start to serve');
     for (const t in config.swap_file) {
         utils.load_swap(cache, t, config.swap_file[t]);
     }
-    console.log('http: start to serve');
     server.listen(config.server_port, config.server_addr);
 }
 

@@ -9,6 +9,8 @@ const sub_cache = {'v2': [], 'ss': []};
 const config = utils.load_config_sync('server.json');
 const private_key = utils.load_key_sync(config.private_key);
 
+const logger = new utils.logger(config.log_file, true, false);
+
 // common area
 const get_tags = (t) => {
     const tags = [];
@@ -54,7 +56,6 @@ function make_req(proto, options, callback) {
 };
 
 function select_ch(ch, ip) {
-    let inbound;
     const sel_ch = (isp) => {
         const cmcc = '移动';
         const ctcc = '电信';
@@ -62,28 +63,27 @@ function select_ch(ch, ip) {
         let i;
         switch (isp) {
             case cmcc:
-                i = config.ch.cmcc;
+                i = 'cmcc';
                 break;
             case ctcc:
-                i = config.ch.ctcc;
+                i = 'ctcc';
                 break;
             case cucc:
-                i = config.ch.cucc;
+                i = 'cucc';
                 break;
             default:
-                i = config.ch.cmcc;
+                i = 'cmcc';
                 break;
         }
         return i;
     };
     return new Promise((resolve) => {
         if (ch != 'auto') {
-            inbound = config.ch[ch];
-            resolve(inbound);
+            resolve(ch);
         } else {
             isplookup(ip).then((isp) => {
-                inbound = sel_ch(isp);
-                resolve(inbound);
+                const fast_ch = sel_ch(isp);
+                resolve(fast_ch);
             });
         }
     });
@@ -112,15 +112,15 @@ function isplookup (ip) {
                 const buff = buf.concat();
                 const body = utils.make_json(buff);
                 if (!body) {
-                    reject('iplookup: empty resp');
+                    reject('empty response body');
                 }
                 if (!body.code) {
-                    reject('iplookup: remote denied');
+                    reject('denied by remote ' + body.msg);
                 }
                 resolve(body.isp);
             });
         }).on('error', (_) => {
-            reject('iplookup: req failed');
+            reject('bad request');
         });
         const payload = new URLSearchParams();
         payload.append('ip',ip);
@@ -128,7 +128,7 @@ function isplookup (ip) {
 		req.write(payload.toString());
         req.end();
     }).catch((err) => {
-        console.error(err);
+        logger.write(`iplookup: ${err}`);
     });
 }
 
@@ -195,15 +195,15 @@ function gen_sub_link(clients_v2, inbound) {
 const handler = (_clients, resp, form, ip) => {
     const t = form.get('proto');
     const ch = form.get('channel');
-    select_ch(ch, ip).then((inbound) => {
-        let ret = sub_cache[t][ch];
+    select_ch(ch, ip).then((inb) => {
+        let ret = sub_cache[t][inb];
         if (!ret) {
             switch (t) {
                 case 'v2':
-                    ret = handle_v2(_clients['v2'], inbound);
+                    ret = handle_v2(_clients['v2'], config['ch'][inb]);
                     break;
                 case 'ss':
-                    ret = handle_ss(_clients['ss'], inbound);
+                    ret = handle_ss(_clients['ss'], config['ch'][inb]);
                     break;
                 default:
                     break;
@@ -212,31 +212,33 @@ const handler = (_clients, resp, form, ip) => {
         }
         resp.write(ret);
         resp.end();
+        logger.write(`sub: ${ip} fetch ${t} ${inb}`);
     });
 };
 
 const server = http.createServer((req, resp) => {
     const ip = req.headers[config.sub_header];
-    const url = new URL(req.url, 'https://' + req.headers.host);
+    const url = new URL(req.url, 'http://' + req.headers.host);
     const form = url.searchParams;
     if (!ip) {
         utils.ret404(resp);
         const unexpected_ip = utils.get_real_ip(req);
-        console.log('unexpected: %s',unexpected_ip);
+        logger.write(`http: ${unexpected_ip} ${req.method} ${url.href}`);
     }
     if (!utils.check_ua(req.headers, config.ua) || req.method != 'GET' || !utils.check_date(form.get('token'))) {
         utils.ret404(resp);
         //req.removeAllListeners();
+        logger.write(`sub: ${ip} encounter error`);
         return;
     }
     const {ret, msg} = utils.check_form(form);
     if (!ret) {
         utils.ret404(resp);
-        console.error(msg);
+        logger.write(`sub: incorrect form format ${msg}`);
         return;
     }
-    req.on('error', (err) => {
-        console.error(err);
+    req.on('error', (_) => {
+        logger.write('http: bad reqeust');
     });
     req.on('data', (_) => {});
     req.on('end', () => {
@@ -272,34 +274,40 @@ function get_client(t, tag) {
         const req = make_req(proto, opts, (resp) => {
             const buf = [];
             resp.on('data', (chunk) => {
-                buf.push(chunk);
+                const plain = utils.server_decrypt(private_key, Buffer.from(chunk.toString(),'base64'));
+                if(plain === null) {
+                    req.removeAllListeners();
+                    reject('corrupt data');
+                }
+                buf.push(plain);
             });
             resp.on('end', () => {
                 const buff = buf.concat().toString();
-                const body = utils.make_json(utils.server_decrypt(private_key, Buffer.from(buff, 'base64')));
+                //const body = utils.make_json(utils.server_decrypt(private_key, Buffer.from(buff, 'base64')));
+                const body = utils.make_json(buff);
                 if (!body) {
-                    reject('getcli: empty resp');
-                    return
+                    reject('empty response body');
+                    return;
                 }
                 if (!body.code) {
-                    reject('getcli: remote denied');
-                    return
+                    reject('denied by remote ' + body.msg);
+                    return;
                 }
                 const sub_data = gen_sub_data(body.data, conf);
                 resolve(sub_data);
             });
         }).on('error', (_) => {
-            reject('getcli: req failed');
+            reject('bad request');
         });
         const payload = JSON.stringify({
             't': t,
             'cmd': 'sub',
             'data': '0'
         });
-		req.write(utils.server_encrypt(private_key, Buffer.from(payload)));
+        req.write(utils.server_encrypt(private_key, Buffer.from(payload)));
         req.end();
     }).then((sub_data) => {
-        console.log('getcli: %s', tag);
+        logger.write(`api: fetch ${t} ${tag}`);
         let count = 0;
         for (const key in sub_data) {
             if (cli[key] != sub_data[key]) {
@@ -311,7 +319,7 @@ function get_client(t, tag) {
         if (count) return Promise.resolve(true);
         return Promise.resolve(false);
     }).catch((err) => {
-        console.error(err);
+        logger.write(`api: fetch ${t} ${tag} ${err}`);
         return Promise.resolve(false);
     });
 };
@@ -336,18 +344,24 @@ function mod_client(t, tag, payload) {
         const req = make_req(proto, opts, (resp) => {
             const buf = [];
             resp.on('data', (chunk) => {
-                buf.push(chunk);
+                const plain = utils.server_decrypt(private_key, Buffer.from(chunk.toString(),'base64'));
+                if(plain === null) {
+                    req.removeAllListeners();
+                    reject('corrupted data');
+                }
+                buf.push(plain);
             });
             resp.on('end', () => {
                 const buff = buf.concat().toString();
-                const body = utils.make_json(utils.server_decrypt(private_key, Buffer.from(buff, 'base64')));
+                //const body = utils.make_json(utils.server_decrypt(private_key, Buffer.from(buff, 'base64')));
+                const body = utils.make_json(buff);
                 if (!body) {
-                    reject('modcli: empty resp');
-                    return
+                    reject('empty response body');
+                    return;
                 }
                 if (!body.code) {
-                    reject('modcli: ' + body.msg);
-                    return
+                    reject('denied by remote ' + body.msg);
+                    return;
                 }
                 resolve();
             });
@@ -363,9 +377,9 @@ function mod_client(t, tag, payload) {
         for (const key in payload) {
 			cli[key] = payload[key];
         }
-        console.log('modcli: %s', cli.ps);
+        logger.write(`api: mod ${t} ${tag}`);
     }).catch((err) => {
-        console.error(err);
+        logger.write(`api: mod ${t} ${tag} ${err}`);
     });
 };
 
@@ -386,7 +400,9 @@ function auto_get_latest() {
         });
     };
     get_latest('v2');
-    setTimeout(auto_get_latest, utils.to_next_half_hour());
+    const timeout = utils.to_next_half_hour();
+    setTimeout(auto_get_latest, timeout);
+    logger.write(`app: keep up-to-date, next ${timeout/1000}`);
 }
 
 function auto_update_config() {
@@ -402,11 +418,13 @@ function auto_update_config() {
         }
     };
     update_conf('v2');
-    console.log('update')
-    setTimeout(auto_update_config, utils.to_spec_time(config.update_time));
+    const timeout =  utils.to_spec_time(config.update_time);
+    setTimeout(auto_update_config, timeout);
+    logger.write(`app: keep scrolling, next ${timeout/1000}`);
 }
 
 function main() {
+    logger.write('app: start to serve');
     server.listen(config.server_port, config.server_addr);
     setTimeout(auto_get_latest, 5000);
     setTimeout(auto_update_config, utils.to_spec_time(config.update_time));
