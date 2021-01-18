@@ -4,7 +4,7 @@ var utils = {};
 const fs = require('fs');
 const uuid = require('uuid');
 const crypto = require('crypto');
-const { time } = require('console');
+
 
 utils.uuid = () => {
     return uuid.v4();

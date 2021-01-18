@@ -1,15 +1,13 @@
 {
   "name": "AutoPilot",
   "version": "1.0.0",
-  "description": "Node.js on Docker",
+  "description": "Automatic Proxy Manager",
   "author": "zephyr",
-  "main": "server.js",
-  "scripts": {
-    "start": "node main.js"
-  },
   "dependencies": {
-    "fs": "*",
-    "http": "*",
+    "crypto": "^1.0.1",
+    "fs": "0.0.2",
+    "http": "0.0.0",
+    "https": "^1.0.0",
     "uuid": "^8.3.2"
   }
 }

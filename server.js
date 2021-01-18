@@ -196,7 +196,7 @@ const gen_sub_link = (clients_v2, inbound) => {
 // for v2ray
 const gen_custom_sub_head = () => {
     const uuid = utils.uuid();
-    const ps = '';
+    const ps = new Date().toUTCString();
     const sub_data = {
         'v': '2',
         'ps': ps,
@@ -208,7 +208,7 @@ const gen_custom_sub_head = () => {
         'type': 'none',
         'host': '',
         'path': '',
-        'tls': 'tls'
+        'tls': ''
     };
     const sub_head = 'vmess://' + utils.base64(sub_data);
     return sub_head;
