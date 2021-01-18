@@ -153,7 +153,7 @@ const make_req = (proto, options, callback) => {
         req = http.request(options, callback);
     }
     return req;
-}
+};
 
 // for v2ray
 const gen_sub_data = (data, conf) => {
@@ -182,6 +182,7 @@ const gen_sub_data = (data, conf) => {
 // for v2ray
 const gen_sub_link = (clients_v2, inbound) => {
     let buf = [];
+    buf.push(gen_custom_sub_head());
     const cpy = utils.clone(clients_v2);
     for(let i=0,len=cpy.length; i<len; i++) {
         cpy[i]['add'] = inbound;
@@ -190,7 +191,28 @@ const gen_sub_link = (clients_v2, inbound) => {
     }
     const sub = utils.base64(buf.join('\n'));
     return sub;
-}
+};
+
+// for v2ray
+const gen_custom_sub_head = () => {
+    const uuid = utils.uuid();
+    const ps = '';
+    const sub_data = {
+        'v': '2',
+        'ps': ps,
+        'add': '0.0.0.0',
+        'port': '10000',
+        'id': uuid,
+        'aid': '1',
+        'net': 'tcp',
+        'type': 'none',
+        'host': '',
+        'path': '',
+        'tls': 'tls'
+    };
+    const sub_head = 'vmess://' + utils.base64(sub_data);
+    return sub_head;
+};
 
 const get_tags = (t) => {
     let tags = [];
@@ -198,7 +220,7 @@ const get_tags = (t) => {
         tags.push(config[t][i].tag);
     }
     return tags;
-}
+};
 
 const get_cli = (t, tag) => {
     let cli = null;
@@ -208,7 +230,7 @@ const get_cli = (t, tag) => {
         }
     }
     return cli;
-}
+};
 
 const get_conf = (t, tag) => {
     let conf = null;
@@ -288,7 +310,9 @@ const get_client = (t, tag) => {
 };
 
 // remote
-const mod_client = (t, cli, payload) => {    
+const mod_client = (t, tag, payload) => {   
+    const cli = get_cli(t, tag);
+    if (cli == null) return; 
     const conf = get_conf(t, cli.ps);
     const {proto, host, port, path} = utils.parse_url(conf.api);                                                                                                                                                                                                                                                                                                                              
     const opts = {
@@ -348,7 +372,6 @@ function auto_get_latest() {
             task.push(tsk);
         }
         Promise.all(task).then((values) => {
-            console.log(values);
             if (values.indexOf(true) != -1) {
                 clients[t] = utils.clone(clients[t]);
                 for (const ch of ['cmcc','ctcc','cucc']) {
@@ -364,10 +387,9 @@ function auto_get_latest() {
 function auto_update_config() {
     const update_conf = (t) => {
         const update = (tag) => {
-            const cli = get_cli(t, tag);
             const uuid = utils.uuid();
             const payload = {'id': uuid};
-            mod_client(t, cli, payload);
+            mod_client(t, tag, payload);
         };
         const tags = get_tags(t);
         for(let i=0,len=tags.length; i<len; i++) {
@@ -375,6 +397,7 @@ function auto_update_config() {
         }
     };
     update_conf('v2');
+    console.log('update')
     setTimeout(auto_update_config, utils.to_spec_time(config.update_time));
 }
 

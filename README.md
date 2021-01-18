@@ -1,10 +1,10 @@
 # Auto Pilot
 
-## This programe maintains config-file for v2ray/shadowsocks separately, which is located in "swap.json" by default. Meanwhile, another programe(shell script is enough) run with root privilege, check if the swap was modified then copy it to the real config-file.
+This program maintains config-file for v2ray/shadowsocks separately, which is located in "swap.json" by default. Meanwhile, another program(shell script is enough) run with root privilege, check if the swap was modified then copy it to the real config-file.
 
 <br>
 
-## Normally, the programe receives request from the central server, check request headers, then download request body and parse it to json, and update inner cache(write into swap later) or return subscription link according to what {"cmd": } indicates.
+Normally, the program receives request from the central server, check request headers, then download request body and parse it to json, and update inner cache(write into swap later) or return subscription link according to what {"cmd": } indicates.
 
 <br>
 

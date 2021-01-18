@@ -3,8 +3,10 @@
     "server_ip": "127.0.0.1",
     "server_port": "20000",
     "server_path": "/",
-    "update_interval" : "86400000",
+    "update_time" : "00:00:00",
     "private_key": "key",
+    "sub_header" : "sub_header",
+    "iplookup_api": "http://127.0.0.1:8080",
     "ch": {
         "cmcc": "1.1.1.1",
         "ctcc": "2.2.2.2",

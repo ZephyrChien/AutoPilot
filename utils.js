@@ -240,7 +240,7 @@ utils.get_real_ip = (req) => {
 
 utils.to_next_half_hour = () => {
     let d = new Date();
-    if (d.getMinutes > 30) {
+    if (d.getMinutes() > 30) {
         return d.setMinutes(30) - Date.now() + 30*60*1000;
     } else {
         return d.setMinutes(30) - Date.now();
@@ -250,8 +250,15 @@ utils.to_next_half_hour = () => {
 utils.to_spec_time = (due) => {
     const offset = -new Date().getTimezoneOffset()/60;
     const due_arr = due.split(':');
-    const hh = due_arr[0], mm = due_arr[1], ss = due_arr[2];
-    let d = new Date(); d.setHours(hh + offset); d.setMinutes(mm); d.setSeconds(ss);
+    const hh = parseInt(due_arr[0]), mm = due_arr[1], ss = due_arr[2];
+    let d = new Date(); d.setMinutes(mm); d.setSeconds(ss);
+    if (hh + offset > 23) {
+        d.setHours(hh + offset - 24);
+    } else if (hh + offset < 0) {
+        d.setHours(hh + offset + 24);
+    } else {
+        d.setHours(hh + offset);
+    }
     if (d.getTime() > Date.now()) {
         return d.getTime() - Date.now();
     } else {
