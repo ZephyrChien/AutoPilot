@@ -24,6 +24,20 @@ utils.base64 = (buf) => {
     return buff.toString('base64');
 };
 
+utils.passwd = (n) => {
+    let buf = [];
+    for (let i=0,t=Math.ceil(n/8); i<t; i++) {
+        buf.push(Math.random().toString(36).substr(2,8));
+    }
+    buf = buf.join('').substr(0,n).split('');
+    for (let i=0;i<n;i++) {
+        if (Math.random() > 0.5) {
+            buf[i] = buf[i].toUpperCase()
+        }
+    }
+    return buf.join('')
+}
+
 utils.client_encrypt = (pub, buf) => {
     const enc =  crypto.publicEncrypt({
         'key': pub,
@@ -132,9 +146,9 @@ utils.check_req_body = (body) => {
     const t_list = ['ss','v2'];
     const cmd_list = ['new','mod','get','sub'];
     if (!body['t'] || t_list.indexOf(body['t']) == -1) {
-        msg = 'unsupported t';
+        msg = 'unknown t';
     } else if (!body['cmd'] || cmd_list.indexOf(body['cmd']) == -1) {
-        msg = 'unsupported cmd';
+        msg = 'unknown cmd';
     } else if (!body['data']) {
         msg = 'empty data';
     } else {ret = true;}
@@ -238,7 +252,7 @@ utils.get_real_ip = (req) => {
 
 utils.to_next_half_hour = () => {
     const d = new Date();
-    if (d.getMinutes() > 30) {
+    if (d.getMinutes() >= 30) {
         return d.setMinutes(30) - Date.now() + 30*60*1000;
     } else {
         return d.setMinutes(30) - Date.now();

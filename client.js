@@ -37,6 +37,7 @@ const cmds = {};
 
 cmds.sub = (t) => {
     const sub_v2 = (_sub) => {
+        const buf = utils.clone(cache.v2.inbounds[0]);
         const mapper = {
             'add': 'listen', // sub.add equals config.inbounds[0].listen
             'port': 'port',
@@ -44,14 +45,22 @@ cmds.sub = (t) => {
             'net': 'network',
             'path': 'path'
         }
-        const buf = utils.clone(cache.v2.inbounds[0]);
         for (const key in mapper) {
             _sub[key] = utils.search(buf, mapper[key])[0].toString();
+        }
+    }
+    const sub_ss = (_sub) => {
+        const buf = utils.clone(cache.ss);
+        const keys = ['server', 'server_port', 'method', 'password'];
+        for (const key of keys) {
+            _sub[key] = buf[key];
         }
     }
     const sub = {};
     if (t == 'v2') {
         sub_v2(sub);
+    } else if (t == 'ss') {
+        sub_ss(sub);
     }
     return {'code':1, 'msg': 'success', 'data': sub};
 };
@@ -80,38 +89,31 @@ cmds.get = (cache_t, data) => {
     return {'code':1, 'msg': 'success', 'data': d};
 };
 
-function handle_common(t, cmd, data) {
-    let ret;
-    switch (cmd) {
-        case 'new':
-            ret = cmds.new(t, data);
-            break;
-        case 'mod':
-            ret = cmds.mod(cache[t], data);
-            break;
-        case 'get':
-            ret = cmds.get(cache[t], data);
-            break;
-        default:
-            ret = {'code': 0, 'msg': 'unknown cmd', 'data': null};
-            break;
-    }
-    utils.flush(cache, config.swap_file[t]);
-    return ret;
-};
-
 const handler = (resp, body) => {
     const {t, cmd, data} = body;
     if (!cache[t]) {
-        const msg = 'unknown t';
+        const msg = 'unsupported t';
         make_resp(resp, 0, msg, null);
         return;
     }
     let ret;
-    if (cmd == 'sub') {
-        ret = cmds.sub(t);
-    } else {
-        ret = handle_common(t, cmd, data);
+    switch (cmd) {
+        case 'sub':
+            ret = cmds.sub(t);
+            break;
+        case 'new':
+            ret = cmds.new(t, data);
+            break;
+        case 'get':
+            ret = cmds.get(cache[t], data);
+            break;
+        case 'mod':
+            ret = cmds.mod(cache[t], data);
+            utils.flush(cache[t], config.swap_file[t]);
+            break;
+        default:
+            ret = {'code': 0, 'msg': 'unsupported cmd', 'data': null};
+            break;
     }
     make_resp(resp, ret.code, ret.msg, ret.data);
 };
@@ -151,11 +153,11 @@ const server = http.createServer((req, resp) => {
         const {ret, msg} = utils.check_req_body(body);
         if (!ret) {
             make_resp(resp, 0, msg, null);
-            logger.write(`api: response body error, ${msg}`);
+            logger.write(`api: request body error, ${msg}`);
             return;
         }
         handler(resp, body);
-        logger.write(`api: ${body.cmd}`);
+        logger.write(`api: ${body.cmd} ${body.t}`);
     });
 });
 

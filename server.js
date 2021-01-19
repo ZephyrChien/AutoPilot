@@ -22,8 +22,9 @@ const get_tags = (t) => {
 
 const get_cli = (t, tag) => {
     let cli = null;
+    const nickname = ( t == 'v2'? 'ps' : 'tag');
     for (let i=0,len=clients[t].length; i<len; i++) {
-        if (clients[t][i].ps == tag) {
+        if (clients[t][i][nickname] == tag) {
             cli = clients[t][i];
         }
     }
@@ -132,44 +133,64 @@ function isplookup (ip) {
     });
 }
 
-function handle_v2(clients_v2, inbound) {
-    return gen_sub_link(clients_v2, inbound);
+function gen_custom_sub_head(t) {
+    const tag = new Date().toUTCString().split(' ').slice(1,5).join('-');
+    const gen_head_v2 = () => {
+        const uuid = utils.uuid();
+        const sub_data = {
+            'v': '2',
+            'ps': tag,
+            'add': '0.0.0.0',
+            'port': '10000',
+            'id': uuid,
+            'aid': '1',
+            'net': 'tcp',
+            'type': 'none',
+            'host': '',
+            'path': '',
+            'tls': ''
+        };
+        const sub_head = 'vmess://' + utils.base64(sub_data);
+        return sub_head;
+    };
+    const gen_head_ss = () => {
+        const userinfo = utils.base64('chacha20-ietf-poly1305:password');
+        const sub_head = `ss://${userinfo}@0.0.0.0:10000#${tag}`;
+        return sub_head;
+    }
+    if (t == 'v2') {
+        return gen_head_v2();
+    }
+    if (t == 'ss') {
+        return gen_head_ss();
+    }
 };
 
-function gen_custom_sub_head() {
-    const uuid = utils.uuid();
-    const ps = new Date().toUTCString();
-    const sub_data = {
-        'v': '2',
-        'ps': ps,
-        'add': '0.0.0.0',
-        'port': '10000',
-        'id': uuid,
-        'aid': '1',
-        'net': 'tcp',
-        'type': 'none',
-        'host': '',
-        'path': '',
-        'tls': ''
-    };
-    const sub_head = 'vmess://' + utils.base64(sub_data);
-    return sub_head;
-};
-
-function gen_sub_data(data, conf) {
-    const sub_data = {
-        'v': '2',
-        'ps': conf.tag,
-        'add': '',
-        'port': '',
-        'id': '',
-        'aid': '1',
-        'net': '',
-        'type': 'none',
-        'host': '',
-        'path': '',
-        'tls': 'tls'
-    };
+function gen_sub_data(t, data, conf) {
+    let sub_data;
+    if (t == 'v2') {
+        sub_data = {
+            'v': '2',
+            'ps': conf.tag,
+            'add': '',
+            'port': '',
+            'id': '',
+            'aid': '1',
+            'net': '',
+            'type': 'none',
+            'host': '',
+            'path': '',
+            'tls': 'tls'
+        };
+    } else if (t == 'ss') {
+        sub_data = {
+            'tag': conf.tag,
+            'server': '',
+            'server_port': '',
+            'method': '',
+            'password': ''
+        }
+    }
     for (const key in data) {
         sub_data[key] = data[key];
     }
@@ -179,17 +200,34 @@ function gen_sub_data(data, conf) {
     return sub_data;
 };
 
-function gen_sub_link(clients_v2, inbound) {
+function gen_sub_link(t, clients_t, inbound) {
     const buf = [];
-    buf.push(gen_custom_sub_head());
-    const cpy = clients_v2;
-    for(let i=0,len=cpy.length; i<len; i++) {
-        cpy[i]['add'] = inbound;
-        const link = 'vmess://' + utils.base64(cpy[i]);
-        buf.push(link);
+    buf.push(gen_custom_sub_head(t));
+    if (t == 'v2') {
+        for(let i=0,len=clients_t.length; i<len; i++) {
+            const cpy = utils.clone(clients_t[i]);
+            cpy.add = inbound;
+            const link = 'vmess://' + utils.base64(cpy);
+            buf.push(link);
+        }
+    } else if (t == 'ss') {
+        for(let i=0,len=clients_t.length; i<len; i++) {
+            const c = clients_t[i];
+            const userinfo = utils.base64(`${c.method}:${c.password}`);
+            const link = `ss://${userinfo}@${inbound}:${c.server_port}#${c.tag}`;
+            buf.push(link);
+        }
     }
     const sub = utils.base64(buf.join('\n'));
     return sub;
+};
+
+function handle_v2(clients_v2, inbound) {
+    return gen_sub_link('v2', clients_v2, inbound);
+};
+
+function handle_ss(clients_ss, inbound) {
+    return gen_sub_link('ss', clients_ss, inbound);
 };
 
 const handler = (_clients, resp, form, ip) => {
@@ -224,6 +262,7 @@ const server = http.createServer((req, resp) => {
         utils.ret404(resp);
         const unexpected_ip = utils.get_real_ip(req);
         logger.write(`http: ${unexpected_ip} ${req.method} ${url.href}`);
+        return;
     }
     if (!utils.check_ua(req.headers, config.ua) || req.method != 'GET' || !utils.check_date(form.get('token'))) {
         utils.ret404(resp);
@@ -293,7 +332,7 @@ function get_client(t, tag) {
                     reject('denied by remote ' + body.msg);
                     return;
                 }
-                const sub_data = gen_sub_data(body.data, conf);
+                const sub_data = gen_sub_data(t, body.data, conf);
                 resolve(sub_data);
             });
         }).on('error', (_) => {
@@ -327,7 +366,7 @@ function get_client(t, tag) {
 function mod_client(t, tag, payload) {   
     const cli = get_cli(t, tag);
     if (cli == null) return; 
-    const conf = get_conf(t, cli.ps);
+    const conf = (t == 'v2' ? get_conf(t, cli.ps): get_conf(t, cli.tag));
     const {proto, host, port, path} = utils.parse_url(conf.api);                                                                                                                                                                                                                                                                                                                              
     const opts = {
         'host': host,
@@ -394,12 +433,13 @@ function auto_get_latest() {
         Promise.all(task).then((values) => {
             if (values.indexOf(true) != -1) {
                 for (const ch of ['cmcc','ctcc','cucc']) {
-                    sub_cache[t][ch] = gen_sub_link(clients[t], config['ch'][ch]);
+                    sub_cache[t][ch] = gen_sub_link(t, clients[t], config['ch'][ch]);
                 }
             }
         });
     };
     get_latest('v2');
+    get_latest('ss');
     const timeout = utils.to_next_half_hour();
     setTimeout(auto_get_latest, timeout);
     logger.write(`app: keep up-to-date, next ${timeout/1000}`);
@@ -407,17 +447,24 @@ function auto_get_latest() {
 
 function auto_update_config() {
     const update_conf = (t) => {
-        const update = (tag) => {
-            const uuid = utils.uuid();
-            const payload = {'id': uuid};
-            mod_client(t, tag, payload);
-        };
         const tags = get_tags(t);
-        for(let i=0,len=tags.length; i<len; i++) {
-            update(tags[i]);
+        if (t == 'v2') {
+            for(let i=0,len=tags.length; i<len; i++) {
+                const uuid = utils.uuid();
+                const payload = {'id': uuid};
+                mod_client(t, tags[i], payload);
+            }
+        } else if (t == 'ss') {
+            for(let i=0,len=tags.length; i<len; i++) {
+                const n = Math.ceil(12*Math.random()) + 12;
+                const passwd = utils.passwd(n);
+                const payload = {'password': passwd};
+                mod_client(t, tags[i], payload);
+            }
         }
     };
     update_conf('v2');
+    update_conf('ss');
     const timeout =  utils.to_spec_time(config.update_time);
     setTimeout(auto_update_config, timeout);
     logger.write(`app: keep scrolling, next ${timeout/1000}`);
