@@ -201,6 +201,17 @@ utils.load_key_sync = (fname) => {
     }
 };
 
+utils.load_text_sync = (fname) => {
+    let buf = '';
+    try {
+        buf = fs.readFileSync(fname).toString();
+    } catch(err) {
+        console.error(err);
+    } finally {
+        return buf;
+    }
+};
+
 utils.load_swap = (cache, t, fname) => {
     fs.readFile(fname, (err, buf) => {
         if (err) {

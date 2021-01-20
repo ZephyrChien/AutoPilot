@@ -218,6 +218,12 @@ function gen_sub_link(t, clients_t, inbound) {
             buf.push(link);
         }
     }
+    if (config.custom[t]) {
+        const customs = utils.load_text_sync(config.custom[t]).split('\n');
+        for (const c of customs) {
+            if (c) buf.push(c);
+        }
+    }
     const sub = utils.base64(buf.join('\n'));
     return sub;
 };
