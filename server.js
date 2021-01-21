@@ -419,9 +419,11 @@ function mod_client(t, tag, payload) {
         req.write(utils.server_encrypt(private_key, Buffer.from(full_payload)));
         req.end();
     }).then(() => {
+        /*
         for (const key in payload) {
 			cli[key] = payload[key];
         }
+        */
         logger.write(`api: mod ${t} ${tag}`);
     }).catch((err) => {
         logger.write(`api: mod ${t} ${tag} ${err}`);
@@ -438,6 +440,11 @@ function auto_get_latest() {
         }
         Promise.all(task).then((values) => {
             if (values.indexOf(true) != -1) {
+                // sort
+                const nickname = ( t == 'v2' ? 'ps' : 'tag');
+                clients[t].sort((a, b) => {
+                    return tags.indexOf(a[nickname]) - tags.indexOf(b[nickname]);
+                });
                 for (const ch of ['cmcc','ctcc','cucc']) {
                     sub_cache[t][ch] = gen_sub_link(t, clients[t], config['ch'][ch]);
                 }
