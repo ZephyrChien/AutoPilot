@@ -46,7 +46,13 @@ cmds.sub = (t) => {
             'path': 'path'
         }
         for (const key in mapper) {
-            _sub[key] = utils.search(buf, mapper[key])[0].toString();
+            const v = utils.search(buf, mapper[key]);
+            if (!v.length) {
+                if (key == 'net') _sub[key] = 'tcp';
+                if (key == 'path') _sub[key] = '';
+                continue
+            }
+            _sub[key] = v[0].toString();
         }
     }
     const sub_ss = (_sub) => {
