@@ -8,6 +8,11 @@
     "fs": "0.0.2",
     "http": "0.0.0",
     "https": "^1.0.0",
+    "node-ip2region": "^1.0.2",
     "uuid": "^8.3.2"
+  },
+  "scripts": {
+    "client": "node client.js",
+    "server": "node server.js"
   }
 }

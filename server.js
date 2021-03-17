@@ -3,6 +3,7 @@
 const http = require('http');
 const https = require('https');
 const utils = require('./utils');
+const ip2region = require('node-ip2region').create();
 
 const clients = {'v2': [], 'ss': []};
 const sub_cache = {'v2': [], 'ss': []};
@@ -46,6 +47,8 @@ const get_conf = (t, tag) => {
 // subscription field
 // provide different sub_link according the params received
 // usually the sub_link is cached
+const isplookupX = config.iplookup_api=="local" ? isplookup_local : isplookup;
+
 function make_req(proto, options, callback) {
     let req;
     if (proto == 'https') {
@@ -82,7 +85,7 @@ function select_ch(ch, ip) {
         if (ch != 'auto') {
             resolve(ch);
         } else {
-            isplookup(ip).then((isp) => {
+            isplookupX(ip).then((isp) => {
                 const fast_ch = sel_ch(isp);
                 resolve(fast_ch);
             });
@@ -131,6 +134,19 @@ function isplookup (ip) {
     }).catch((err) => {
         logger.write(`iplookup: ${err}`);
     });
+}
+
+function isplookup_local(ip) {
+    return new Promise((resolve, reject) => {
+        ip2region.memorySearch(ip, (err, result) => {
+            if (err) {
+                reject('memory search failed');
+            }
+            resolve(result.region.split('|')[4]);
+        });
+    }).catch((err) => {
+        logger.write(`iplookup: ${err}`);
+    })
 }
 
 function gen_custom_sub_head(t) {
