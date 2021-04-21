@@ -4,6 +4,7 @@ const utils = {};
 const fs = require('fs');
 const uuid = require('uuid');
 const crypto = require('crypto');
+const sqlite3 = require('sqlite3').verbose();
 
 
 utils.uuid = () => {
@@ -212,6 +213,7 @@ utils.load_text_sync = (fname) => {
     }
 };
 
+// old version: use json string
 utils.load_swap = (cache, t, fname) => {
     fs.readFile(fname, (err, buf) => {
         if (err) {
@@ -232,6 +234,40 @@ utils.flush = (cache, fname) => {
         }
     });
 };
+
+// new version: use sqlite3
+utils.load_db = (cache, t ,fname) => {
+    const db = new sqlite3.Database(fname);
+    const sql = `select * from ${t};`;
+    db.all(sql,[],(err, rows) => {
+        if (err) {
+            console.error(err);
+            process.exit(1);
+        }
+        let endpoint = [];
+        rows.forEach((row) => {
+            endpoint.append(row);
+        });
+    });
+    db.close();
+};
+
+utils.flush_db = (cache, fname) => {
+    const db = new sqlite3.Database(fname);
+    for (const t in cache) {
+        for (let i=0; i < cache[t].length; i++){
+            const endpoint = cache[t][i] 
+            let kv = [];
+            for(const k in endpoint) {
+                kv.append(`${k}=${endpoint[k]}`);
+            }
+            const sql = `update ${t} set ${kv.join(' ')} where tag=${endpoint['tag']}`;
+            db.run(sql);
+        }   
+    }
+    db.close();
+}
+
 
 utils.make_json = (buf) => {
     let body = null;
